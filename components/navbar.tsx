@@ -1,15 +1,14 @@
 "use client";
 
-import { Menu, Sparkles } from "lucide-react";
-import React from "react";
-import Link from "next/link";
-import { Poppins } from "next/font/google";
+import { useProModal } from "@/hooks/use-pro-modal";
 import { cn } from "@/lib/utils";
 import { UserButton } from "@clerk/nextjs";
-import { Button } from "./ui/button";
-import { ModeToggle } from "./mode-toggle";
+import { Sparkles } from "lucide-react";
+import { Poppins } from "next/font/google";
+import Link from "next/link";
 import MobileSidebar from "./mobile-sidebar";
-import { useProModal } from "@/hooks/use-pro-modal";
+import { ModeToggle } from "./mode-toggle";
+import { Button } from "./ui/button";
 
 const font = Poppins({
   weight: "600",

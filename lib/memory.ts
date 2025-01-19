@@ -1,7 +1,8 @@
 import { Redis } from "@upstash/redis";
-import { OpenAIEmbeddings } from "langchain/embeddings/openai";
-import { PineconeClient } from "@pinecone-database/pinecone";
-import { PineconeStore } from "langchain/vectorstores/pinecone";
+import { Document } from "@langchain/core/documents";
+import { PineconeStore } from "@langchain/pinecone";
+import { Pinecone } from "@pinecone-database/pinecone";
+import { HuggingFaceInferenceEmbeddings } from "@langchain/community/embeddings/hf";
 
 export type CompanionKey = {
   companionName: string;
@@ -9,115 +10,139 @@ export type CompanionKey = {
   userId: string;
 };
 
+export type Message = {
+  id: string;
+  content: string;
+  role: "user" | "system";
+  userId: string;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export type Companion = {
+  id: string;
+  name: string;
+  instructions: string;
+  seed: string;
+  messages: Message[];
+  userId: string;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
 export class MemoryManager {
   private static instance: MemoryManager;
   private history: Redis;
-  private vectorDBClient: PineconeClient;
+  private vectorDBClient: Pinecone;
+  private embeddings: HuggingFaceInferenceEmbeddings;
+  private readonly CHAT_HISTORY_LIMIT = 30;
 
-  public constructor() {
+  private constructor() {
     this.history = Redis.fromEnv();
-    this.vectorDBClient = new PineconeClient();
-  }
 
-  public async init() {
-    if (this.vectorDBClient instanceof PineconeClient) {
-      await this.vectorDBClient.init({
-        apiKey: process.env.PINECONE_API_KEY!,
-        environment: process.env.PINECONE_ENVIRONMENT!,
-      });
-    }
-  }
+    this.vectorDBClient = new Pinecone({
+      apiKey: process.env.PINECONE_API_KEY!,
+    });
 
-  public async vectorSearch(
-    recentChatHistory: string,
-    companionFileName: string
-  ) {
-    const pineconeClient = <PineconeClient>this.vectorDBClient;
-
-    const pineconeIndex = pineconeClient.Index(
-      process.env.PINECONE_INDEX! || ""
-    );
-
-    const vectorStore = await PineconeStore.fromExistingIndex(
-      new OpenAIEmbeddings({ openAIApiKey: process.env.OPENAI_API_KEY }),
-      {
-        pineconeIndex,
-      }
-    );
-
-    const similarDocs = await vectorStore
-      .similaritySearch(recentChatHistory, 3, { fileName: companionFileName })
-      .catch((error) =>
-        console.log("Failed to get vector search results", error)
-      );
-
-    return similarDocs;
+    this.embeddings = new HuggingFaceInferenceEmbeddings({
+      apiKey: process.env.HUGGINGFACE_API_KEY,
+    });
   }
 
   public static async getInstance(): Promise<MemoryManager> {
     if (!MemoryManager.instance) {
       MemoryManager.instance = new MemoryManager();
-      await MemoryManager.instance.init();
     }
-
     return MemoryManager.instance;
   }
 
   private generateRedisCompanionKey(companionKey: CompanionKey): string {
-    return `${companionKey.companionName}-${companionKey.modelName}-${companionKey.userId}`;
+    return `chat:${companionKey.companionName}:${companionKey.modelName}:${companionKey.userId}`;
   }
 
-  public async writeToHistory(text: string, companionKey: CompanionKey) {
-    if (!companionKey || typeof companionKey.userId == "undefined") {
-      console.log("Companion key set incorrectly");
-      return "";
+  public async vectorSearch(
+    recentChatHistory: string,
+    companionFileName: string
+  ): Promise<Document[]> {
+    const index = this.vectorDBClient.index(process.env.PINECONE_INDEX!);
+
+    const vectorStore = await PineconeStore.fromExistingIndex(this.embeddings, {
+      pineconeIndex: index,
+    });
+
+    const results = await vectorStore.similaritySearch(recentChatHistory, 3);
+    return results;
+  }
+
+  public async writeToHistory(
+    text: string,
+    companionKey: CompanionKey
+  ): Promise<void> {
+    if (!this.validateCompanionKey(companionKey)) {
+      throw new Error("Invalid companion key");
     }
 
     const key = this.generateRedisCompanionKey(companionKey);
 
-    const result = await this.history.zadd(key, {
+    await this.history.zadd(key, {
       score: Date.now(),
       member: text,
     });
 
-    return result;
+    await this.trimHistory(key);
   }
 
   public async readLatestHistory(companionKey: CompanionKey): Promise<string> {
-    if (!companionKey || typeof companionKey.userId == "undefined") {
-      console.log("Companion key set incorrectly");
-      return "";
+    if (!this.validateCompanionKey(companionKey)) {
+      throw new Error("Invalid companion key");
     }
 
     const key = this.generateRedisCompanionKey(companionKey);
-    let result = await this.history.zrange(key, 0, Date.now(), {
+    const oneDayAgo = Date.now() - 24 * 60 * 60 * 1000;
+
+    const messages = await this.history.zrange(key, oneDayAgo, Date.now(), {
       byScore: true,
     });
 
-    result = result.slice(-30).reverse();
-
-    const recentChats = result.reverse().join("\n");
-
-    return recentChats;
+    return messages.slice(-this.CHAT_HISTORY_LIMIT).join("\n");
   }
 
   public async seedChatHistory(
-    seedContent: String,
+    seedContent: string,
     delimiter: string = "\n",
     companionKey: CompanionKey
-  ) {
+  ): Promise<void> {
     const key = this.generateRedisCompanionKey(companionKey);
-    if (await this.history.exists(key)) {
-      console.log("User already has chat history");
-      return;
-    }
-
     const content = seedContent.split(delimiter);
-    let counter = 0;
 
-    for (const line of content) {
-      await this.history.zadd(key, { score: counter, member: line });
-      counter += 1;
+    const pipeline = this.history.pipeline();
+    content.forEach((line, index) => {
+      pipeline.zadd(key, {
+        score: Date.now() + index,
+        member: line.trim(),
+      });
+    });
+
+    await pipeline.exec();
+  }
+
+  private async trimHistory(key: string): Promise<void> {
+    const count = await this.history.zcard(key);
+    if (count > this.CHAT_HISTORY_LIMIT) {
+      await this.history.zremrangebyrank(
+        key,
+        0,
+        count - this.CHAT_HISTORY_LIMIT - 1
+      );
     }
+  }
+
+  private validateCompanionKey(companionKey: CompanionKey): boolean {
+    return !!(
+      companionKey &&
+      companionKey.companionName &&
+      companionKey.modelName &&
+      companionKey.userId
+    );
   }
 }

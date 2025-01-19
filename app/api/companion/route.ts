@@ -1,6 +1,6 @@
 import prismadb from "@/lib/prismadb";
 import { checkSubscription } from "@/lib/subscription";
-import { currentUser } from "@clerk/nextjs";
+import { currentUser } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 
 export async function POST(req: Request) {
@@ -45,7 +45,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json(companion);
   } catch (error) {
-    console.log("[COMPNANION_POST]", error);
+    console.log("[COMPANION_POST]", error);
     return new NextResponse("Internal Error", { status: 500 });
   }
 }

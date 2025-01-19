@@ -1,5 +1,5 @@
 import prismadb from "@/lib/prismadb";
-import { auth, currentUser } from "@clerk/nextjs";
+import { auth, currentUser } from "@clerk/nextjs/server";
 import { stripe } from "@/lib/stripe";
 import { absoluteUrl } from "@/lib/utils";
 import { NextResponse } from "next/server";
@@ -8,7 +8,7 @@ const settingsUrl = absoluteUrl("/settings");
 
 export async function GET() {
   try {
-    const { userId } = auth();
+    const { userId } = await auth();
 
     const user = await currentUser();
 

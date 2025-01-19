@@ -22,25 +22,43 @@ export const ImageUpload = ({
   }, []);
 
   if (!isMounted) {
-    return false;
+    return null;
   }
 
   return (
     <div className="space-y-4 w-full flex flex-col justify-center items-center">
       <CldUploadButton
-        options={{ maxFiles: 1 }}
-        onUpload={(result: any) => onChange(result.info.secure_url)}
+        options={{
+          maxFiles: 1,
+          // Add more detailed logging options
+          sources: ["local", "url", "camera"],
+        }}
+        onSuccess={(result: any) => onChange(result.info.secure_url)}
         uploadPreset="vpresnqz"
       >
         <div className="p-4 border-4 border-dashed border-primary/10 rounded-lg hover:opacity-75 transition flex flex-col space-y-2 items-center justify-center">
-          <div className="relative h-40 w-40">
-            <Image
-              fill
-              alt="Upload"
-              src={value || "/placeholder.svg"}
-              className="rounded-lg object-cover"
-            />
-          </div>
+          {value ? (
+            <div className="relative h-40 w-40">
+              <Image
+                fill
+                alt="Uploaded Image"
+                src={value}
+                className="rounded-lg object-cover"
+                onError={(e) => {
+                  console.error("Image loading error:", e);
+                }}
+              />
+            </div>
+          ) : (
+            <div className="relative h-40 w-40">
+              <Image
+                fill
+                alt="Upload"
+                src="/placeholder.svg"
+                className="rounded-lg object-cover"
+              />
+            </div>
+          )}
         </div>
       </CldUploadButton>
     </div>

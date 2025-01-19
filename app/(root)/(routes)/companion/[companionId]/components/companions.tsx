@@ -1,4 +1,5 @@
 import { Card, CardFooter, CardHeader } from "@/components/ui/card";
+import { currentUser } from "@clerk/nextjs/server";
 import { Companion } from "@prisma/client";
 import { MessageSquare } from "lucide-react";
 import Image from "next/image";

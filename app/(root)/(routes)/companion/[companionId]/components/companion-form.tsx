@@ -56,7 +56,7 @@ const formSchema = z.object({
     message: "Name is required.",
   }),
   description: z.string().min(1, {
-    message: "Descritpion is required.",
+    message: "Description is required.",
   }),
   instructions: z.string().min(200, {
     message: "Instructions required at lease 200 characters.",
