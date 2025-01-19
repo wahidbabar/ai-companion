@@ -2,13 +2,11 @@ import React, { ChangeEvent, FormEvent } from "react";
 import { ChatRequestOptions } from "ai";
 import { Input } from "./ui/input";
 import { Button } from "./ui/button";
-import { SendHorizonal } from "lucide-react";
+import { SendHorizontal } from "lucide-react";
 
 interface ChatFormProps {
   input: string;
-  handleInputChange: (
-    e: ChangeEvent<HTMLInputElement> | ChangeEvent<HTMLTextAreaElement>
-  ) => void;
+  handleInputChange: (e: ChangeEvent<HTMLInputElement>) => void;
   onSubmit: (
     e: FormEvent<HTMLFormElement>,
     chatRequestOptions?: ChatRequestOptions | undefined
@@ -35,7 +33,7 @@ const ChatForm = ({
         className="rounded-lg bg-primary/10"
       />
       <Button disabled={isLoading} variant="ghost">
-        <SendHorizonal className="h-6 w-6" />
+        <SendHorizontal className="h-6 w-6" />
       </Button>
     </form>
   );

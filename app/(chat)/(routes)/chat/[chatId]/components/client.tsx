@@ -4,7 +4,6 @@ import ChatHeader from "@/components/chat-header";
 import { Companion, Message } from "@prisma/client";
 import { useRouter } from "next/navigation";
 import React, { FormEvent, useState } from "react";
-import { useCompletion } from "ai/react";
 import ChatForm from "@/components/chat-form";
 import ChatMessages from "@/components/chat-messages";
 import { ChatMessageProps } from "@/components/chat-message";
@@ -23,32 +22,76 @@ const ChatClient = ({ companion }: ChatClientProps) => {
   const [messages, setMessages] = useState<ChatMessageProps[]>(
     companion.messages
   );
+  const [input, setInput] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
 
-  const { input, isLoading, handleInputChange, handleSubmit, setInput } =
-    useCompletion({
-      api: `/api/chat/${companion.id}`,
-      onFinish(prompt, completion) {
-        const systemMessages: ChatMessageProps = {
-          role: "system",
-          content: completion,
-        };
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setInput(e.target.value);
+  };
 
-        setMessages((current) => [...current, systemMessages]);
-        setInput("");
+  const onSubmit = async (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!input.trim()) return;
 
-        router.refresh();
-      },
-    });
-
-  const onSubmit = (e: FormEvent<HTMLFormElement>) => {
     const userMessage: ChatMessageProps = {
       role: "user",
       content: input,
     };
-
     setMessages((current) => [...current, userMessage]);
 
-    handleSubmit(e);
+    const placeholderMessage: ChatMessageProps = {
+      role: "system",
+      content: "",
+    };
+    setMessages((current) => [...current, placeholderMessage]);
+
+    setIsLoading(true);
+    setInput("");
+
+    try {
+      const response = await fetch(`/api/chat/${companion.id}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ prompt: input }),
+      });
+
+      if (!response.ok || !response.body) {
+        throw new Error("Failed to send message");
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let accumulatedContent = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value, { stream: true });
+        accumulatedContent += chunk;
+
+        // Remove the </s> token if it appears at the end
+        const cleanedContent = accumulatedContent.replace(/\s*<\/s>\s*$/, "");
+
+        setMessages((current) => {
+          const updatedMessages = [...current];
+          updatedMessages[updatedMessages.length - 1] = {
+            role: "system",
+            content: cleanedContent,
+          };
+          return updatedMessages;
+        });
+      }
+
+      router.refresh();
+    } catch (error) {
+      console.error("Error sending message:", error);
+      setMessages((current) => current.slice(0, -1));
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
