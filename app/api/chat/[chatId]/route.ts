@@ -33,17 +33,8 @@ export async function POST(request: Request, { params }: { params: Params }) {
     }
 
     console.log("[CHAT_POST] Updating companion in database");
-    const companion = await prismadb.companion.update({
+    const companion = await prismadb.companion.findUnique({
       where: { id: chatId },
-      data: {
-        messages: {
-          create: {
-            content: prompt,
-            role: "user",
-            userId: user.id,
-          },
-        },
-      },
     });
 
     if (!companion) {
@@ -51,14 +42,21 @@ export async function POST(request: Request, { params }: { params: Params }) {
       return new NextResponse("Companion not found", { status: 404 });
     }
 
-    const name = companion.id;
-    const companion_file_name = name + ".txt";
-    console.log("[CHAT_POST] Companion file name:", companion_file_name);
+    // Save the user's message to the database immediately
+    console.log("[CHAT_POST] Saving user message to database");
+    await prismadb.message.create({
+      data: {
+        content: prompt,
+        role: "user",
+        userId: user.id,
+        companionId: chatId,
+      },
+    });
 
     const companionKey = {
-      companionName: name,
+      companionName: companion.id,
       userId: user.id,
-      modelName: "llama2-13b",
+      modelName: "HuggingFaceH4/zephyr-7b-beta",
     };
 
     console.log("[CHAT_POST] Initializing MemoryManager");
@@ -66,69 +64,52 @@ export async function POST(request: Request, { params }: { params: Params }) {
 
     console.log("[CHAT_POST] Reading chat history");
     const records = await memoryManager.readLatestHistory(companionKey);
-    console.log("[CHAT_POST] History records count:", records.length);
 
+    // If there's no history, seed it
     if (records.length === 0) {
       console.log("[CHAT_POST] Seeding chat history");
       await memoryManager.seedChatHistory(companion.seed, "\n\n", companionKey);
     }
 
+    // Write user's message to memory
+    console.log("[CHAT_POST] Writing user message to history");
     await memoryManager.writeToHistory("User: " + prompt + "\n", companionKey);
 
+    // Perform vector search
     let similarDocs: Document[] = [];
-    console.log("[CHAT_POST] Performing vector search");
     try {
-      const recentChatHistory = await memoryManager.readLatestHistory(
-        companionKey
-      );
-      console.log(
-        "[CHAT_POST] Vector search input length:",
-        recentChatHistory.length
-      );
-
+      console.log("[CHAT_POST] Performing vector search");
       similarDocs = await memoryManager.vectorSearch(
-        recentChatHistory,
-        companion_file_name
+        records,
+        companion.id + ".txt"
       );
       console.log("[CHAT_POST] Similar documents found:", similarDocs.length);
-    } catch (error: unknown) {
-      console.error("[CHAT_POST] Vector search error:", {
-        error,
-        name: error instanceof Error ? error.name : "Unknown",
-        message: error instanceof Error ? error.message : "Unknown error",
-        stack: error instanceof Error ? error.stack : "No stack trace",
-      });
-      throw error;
+    } catch (error) {
+      console.error("[CHAT_POST] Vector search error:", error);
     }
 
-    let relevantHistory = "";
-    if (similarDocs.length > 0) {
-      relevantHistory = similarDocs
-        .map((doc: Document) => doc.pageContent)
-        .join("\n");
-      console.log(
-        "[CHAT_POST] Relevant history length:",
-        relevantHistory.length
-      );
-    }
+    let relevantHistory = similarDocs
+      .map((doc: Document) => doc.pageContent)
+      .join("\n");
+    console.log("[CHAT_POST] Relevant history length:", relevantHistory.length);
 
-    const recentChatHistory = await memoryManager.readLatestHistory(
-      companionKey
-    );
-    const prompt_template = `
+    // Prepare the prompt template
+    const promptTemplate = `
       ONLY generate plain sentences without prefix of who is speaking. DO NOT use ${companion.name}: prefix.
       
       ${companion.instructions}
 
       Below are relevant details about ${companion.name}'s past and the conversation you are in.
       ${relevantHistory}
-      ${recentChatHistory}\n${companion.name}:
+      User: ${prompt}
+      ${companion.name}:
     `;
     console.log(
       "[CHAT_POST] Generated prompt template length:",
-      prompt_template.length
+      promptTemplate.length
     );
 
+    // Set up streaming response
     const stream = new TransformStream();
     const writer = stream.writable.getWriter();
     const encoder = new TextEncoder();
@@ -136,7 +117,7 @@ export async function POST(request: Request, { params }: { params: Params }) {
     console.log("[CHAT_POST] Starting text generation stream");
     const textStream = await hf.textGenerationStream({
       model: "HuggingFaceH4/zephyr-7b-beta",
-      inputs: prompt_template,
+      inputs: promptTemplate,
       parameters: {
         max_new_tokens: 2048,
         temperature: 0.7,
@@ -144,6 +125,7 @@ export async function POST(request: Request, { params }: { params: Params }) {
       },
     });
 
+    // Create a placeholder for the AI message
     let aiMessage = await prismadb.message.create({
       data: {
         content: "",
@@ -154,8 +136,8 @@ export async function POST(request: Request, { params }: { params: Params }) {
     });
 
     let responseText = "";
-    let lastUpdateTime = Date.now();
     const UPDATE_INTERVAL = 1000; // Update DB every 1 second
+    let lastUpdateTime = Date.now();
 
     (async () => {
       try {
@@ -163,35 +145,30 @@ export async function POST(request: Request, { params }: { params: Params }) {
           responseText += chunk.token.text;
           await writer.write(encoder.encode(chunk.token.text));
 
-          // Only update the database periodically to avoid flooding
           const currentTime = Date.now();
           if (currentTime - lastUpdateTime >= UPDATE_INTERVAL) {
-            await memoryManager.writeToHistory(responseText, companionKey);
-
-            // Update the existing message instead of creating a new one
             await prismadb.message.update({
               where: { id: aiMessage.id },
               data: { content: responseText },
             });
-
             lastUpdateTime = currentTime;
           }
         }
 
-        // Final update to ensure we have the complete message
-        if (responseText.length > 0) {
-          await memoryManager.writeToHistory(responseText, companionKey);
-          await prismadb.message.update({
-            where: { id: aiMessage.id },
-            data: { content: responseText },
-          });
-        }
+        // Finalize the AI message in the database
+        await prismadb.message.update({
+          where: { id: aiMessage.id },
+          data: { content: responseText },
+        });
+
+        // Save the AI response to memory
+        await memoryManager.writeToHistory(
+          `${companion.name}: ${responseText}\n`,
+          companionKey
+        );
       } catch (error) {
         console.error("[CHAT_POST] Streaming error:", error);
-        // Delete the AI message if streaming failed
-        await prismadb.message.delete({
-          where: { id: aiMessage.id },
-        });
+        await prismadb.message.delete({ where: { id: aiMessage.id } });
       } finally {
         await writer.close();
       }

@@ -1,7 +1,7 @@
 "use client";
 
 import { Companion } from "@prisma/client";
-import React, { ElementRef, useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import ChatMessage, { ChatMessageProps } from "./chat-message";
 
 interface ChatMessagesProps {
@@ -15,7 +15,7 @@ const ChatMessages = ({
   isLoading,
   companion,
 }: ChatMessagesProps) => {
-  const scrollRef = useRef<ElementRef<"div">>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
   const [fakeLoading, setFakeLoading] = useState<boolean>(
     messages.length === 0 ? true : false
   );
@@ -31,7 +31,7 @@ const ChatMessages = ({
   }, [messages.length]);
 
   return (
-    <div className="flex-1 overflow-y-auto pr-4 ">
+    <div className="flex-1 overflow-y-auto pr-4">
       <ChatMessage
         isLoading={fakeLoading}
         src={companion.src}

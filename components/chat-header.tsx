@@ -61,7 +61,7 @@ const ChatHeader = ({ companion }: ChatHeaderProps) => {
         </Button>
         <BotAvatar src={companion.src} />
         <div className="flex flex-col gap-y-1">
-          <div className="flex items-cetner gap-x-2">
+          <div className="flex items-center gap-x-2">
             <p className="font-bold">{companion.name}</p>
             <div className="flex items-center text-xs text-muted-foreground">
               <MessagesSquare className="h-3 w-3 mr-1" />
