@@ -1,7 +1,7 @@
+import React from "react";
 import prismadb from "@/lib/prismadb";
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
-import React from "react";
 import ChatClient from "./components/client";
 import { RedirectToSignIn } from "@clerk/nextjs";
 

@@ -228,7 +228,7 @@ export const CompanionForm = ({
             <div>
               <h3 className="text-lg font-md">Configuration</h3>
               <p className="text-sm text-muted-foreground">
-                Detailed instructions for AI Behaviour
+                Detailed instructions for AI Behavior
               </p>
             </div>
             <Separator className="bg-primary/10" />
@@ -281,7 +281,7 @@ export const CompanionForm = ({
           />
           <div className="w-full flex justify-center">
             <Button size="lg" disabled={isLoading}>
-              {initialData ? "Edit your comapnion" : "Create your companion"}
+              {initialData ? "Edit your companion" : "Create your companion"}
               <Wand2 className="w-4 h-4 ml-2" />
             </Button>
           </div>

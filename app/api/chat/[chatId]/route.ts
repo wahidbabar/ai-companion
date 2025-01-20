@@ -46,7 +46,7 @@ export async function POST(request: Request, { params }: { params: Params }) {
     const companionKey = {
       companionName: companion.id,
       userId: user.id,
-      modelName: "HuggingFaceH4/zephyr-7b-beta",
+      modelName: "mistralai/Mixtral-8x7B-Instruct-v0.1",
     };
 
     const memoryManager = await MemoryManager.getInstance();
@@ -73,26 +73,30 @@ export async function POST(request: Request, { params }: { params: Params }) {
       .join("\n");
 
     const promptTemplate = `
-      ONLY generate plain sentences without prefix of who is speaking. DO NOT use ${companion.name}: prefix.
-      
-      ${companion.instructions}
+  You are ${companion.name}. Respond naturally as yourself.
+  Important: Do not use any prefixes or labels like "User Message:" or "Your Response:".
+  Do not include any metadata about the message structure.
+  Only answer to the point as much user has asked. Do not generate any thing from your own from the user.
+  Just respond directly as you would in a natural conversation.
+  
+  ${companion.instructions}
 
-      Below are relevant details about ${companion.name}'s past and the conversation you are in.
-      ${relevantHistory}
-      User: ${prompt}
-      ${companion.name}:
-    `;
+  Context from previous conversations:
+  ${relevantHistory}
+
+  Latest message: ${prompt}
+`;
 
     const stream = new TransformStream();
     const writer = stream.writable.getWriter();
     const encoder = new TextEncoder();
 
-    const textStream = await hf.textGenerationStream({
-      model: "HuggingFaceH4/zephyr-7b-beta",
+    const textStream = hf.textGenerationStream({
+      model: "mistralai/Mixtral-8x7B-Instruct-v0.1",
       inputs: promptTemplate,
       parameters: {
-        max_new_tokens: 2048,
-        temperature: 0.7,
+        max_new_tokens: 1024,
+        temperature: 0.5,
         repetition_penalty: 1.1,
       },
     });
