@@ -6,15 +6,14 @@ import { NextResponse } from "next/server";
 import { HfInference } from "@huggingface/inference";
 import { Document } from "@langchain/core/documents";
 
+type Params = Promise<{ chatId: string }>;
+
 const hf = new HfInference(process.env.HUGGINGFACE_API_KEY);
 
-export async function POST(
-  request: Request,
-  { params }: { params: { chatId: string } }
-) {
+export async function POST(request: Request, { params }: { params: Params }) {
   try {
     const { prompt } = await request.json();
-    const { chatId } = params;
+    const { chatId } = await params;
 
     const user = await currentUser();
     if (!user || !user.id) {
