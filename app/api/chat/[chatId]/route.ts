@@ -95,7 +95,7 @@ export async function POST(request: Request, { params }: { params: Params }) {
       model: "mistralai/Mixtral-8x7B-Instruct-v0.1",
       inputs: promptTemplate,
       parameters: {
-        max_new_tokens: 1024,
+        max_new_tokens: 2048,
         temperature: 0.5,
         repetition_penalty: 1.1,
       },
