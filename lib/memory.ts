@@ -10,26 +10,6 @@ export type CompanionKey = {
   userId: string;
 };
 
-export type Message = {
-  id: string;
-  content: string;
-  role: "user" | "system";
-  userId: string;
-  createdAt: Date;
-  updatedAt: Date;
-};
-
-export type Companion = {
-  id: string;
-  name: string;
-  instructions: string;
-  seed: string;
-  messages: Message[];
-  userId: string;
-  createdAt: Date;
-  updatedAt: Date;
-};
-
 export class MemoryManager {
   private static instance: MemoryManager;
   private history: Redis;
@@ -61,17 +41,29 @@ export class MemoryManager {
   }
 
   public async vectorSearch(
-    recentChatHistory: string,
-    companionFileName: string
+    query: string,
+    companionId: string
   ): Promise<Document[]> {
-    const index = this.vectorDBClient.index(process.env.PINECONE_INDEX!);
+    try {
+      const index = this.vectorDBClient.index(process.env.PINECONE_INDEX!);
 
-    const vectorStore = await PineconeStore.fromExistingIndex(this.embeddings, {
-      pineconeIndex: index,
-    });
+      const vectorStore = await PineconeStore.fromExistingIndex(
+        this.embeddings,
+        {
+          pineconeIndex: index,
+        }
+      );
 
-    const results = await vectorStore.similaritySearch(recentChatHistory, 3);
-    return results;
+      // Perform similarity search with companion ID context
+      const results = await vectorStore.similaritySearch(query, 3, {
+        companionId: companionId,
+      });
+
+      return results;
+    } catch (error) {
+      console.error("Vector search error:", error);
+      return [];
+    }
   }
 
   public async writeToHistory(

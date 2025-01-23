@@ -1,12 +1,12 @@
 "use client";
 
 import ChatHeader from "@/components/chat-header";
-import { Companion, Message } from "@prisma/client";
 import { useRouter } from "next/navigation";
 import React, { FormEvent, useState } from "react";
 import ChatForm from "@/components/chat-form";
 import ChatMessages from "@/components/chat-messages";
 import { ChatMessageProps } from "@/components/chat-message";
+import { Companion, Message } from "@prisma/client";
 
 interface ChatClientProps {
   companion: Companion & {
@@ -72,7 +72,6 @@ const ChatClient = ({ companion }: ChatClientProps) => {
         const chunk = decoder.decode(value, { stream: true });
         accumulatedContent += chunk;
 
-        // Remove the </s> token if it appears at the end
         const cleanedContent = accumulatedContent.replace(/\s*<\/s>\s*$/, "");
 
         setMessages((current) => {

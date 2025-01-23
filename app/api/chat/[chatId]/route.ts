@@ -29,7 +29,6 @@ export async function POST(request: Request, { params }: { params: Params }) {
     const companion = await prismadb.companion.findUnique({
       where: { id: chatId },
     });
-
     if (!companion) {
       return new NextResponse("Companion not found", { status: 404 });
     }
@@ -50,22 +49,34 @@ export async function POST(request: Request, { params }: { params: Params }) {
     };
 
     const memoryManager = await MemoryManager.getInstance();
-    const records = await memoryManager.readLatestHistory(companionKey);
 
+    const records = await memoryManager.readLatestHistory(companionKey);
     if (records.length === 0) {
-      await memoryManager.seedChatHistory(companion.seed, "\n\n", companionKey);
+      try {
+        await memoryManager.seedChatHistory(
+          companion.seed,
+          "\n\n",
+          companionKey
+        );
+      } catch (error) {
+        console.error("[CHAT_POST] Error seeding chat history:", error);
+      }
     }
 
-    await memoryManager.writeToHistory("User: " + prompt + "\n", companionKey);
+    try {
+      await memoryManager.writeToHistory(
+        "User: " + prompt + "\n",
+        companionKey
+      );
+    } catch (error) {
+      console.error("[CHAT_POST] Error writing user prompt to history:", error);
+    }
 
     let similarDocs: Document[] = [];
     try {
-      similarDocs = await memoryManager.vectorSearch(
-        records,
-        companion.id + ".txt"
-      );
+      similarDocs = await memoryManager.vectorSearch(prompt, companion.id);
     } catch (error) {
-      console.error("[CHAT_POST] Vector search error:", error);
+      console.error("[CHAT_POST] Vector search failed:", error);
     }
 
     const relevantHistory = similarDocs
@@ -112,24 +123,30 @@ export async function POST(request: Request, { params }: { params: Params }) {
       } catch (error) {
         console.error("[CHAT_POST] Streaming error:", error);
       } finally {
-        // Clean the response text before saving
-        const cleanedResponse = responseText.replace(/\s*<\/s>\s*$/, "");
+        try {
+          const cleanedResponse = responseText.replace(/\s*<\/s>\s*$/, "");
 
-        await prismadb.message.create({
-          data: {
-            content: cleanedResponse,
-            role: "system",
-            userId: user.id,
-            companionId: chatId,
-          },
-        });
+          await prismadb.message.create({
+            data: {
+              content: cleanedResponse,
+              role: "system",
+              userId: user.id,
+              companionId: chatId,
+            },
+          });
 
-        await memoryManager.writeToHistory(
-          `${companion.name}: ${cleanedResponse}\n`,
-          companionKey
-        );
-
-        await writer.close();
+          await memoryManager.writeToHistory(
+            `${companion.name}: ${cleanedResponse}\n`,
+            companionKey
+          );
+        } catch (error) {
+          console.error(
+            "[CHAT_POST] Error saving system response to database or history:",
+            error
+          );
+        } finally {
+          await writer.close();
+        }
       }
     })();
 
@@ -139,7 +156,7 @@ export async function POST(request: Request, { params }: { params: Params }) {
       },
     });
   } catch (error) {
-    console.error("[CHAT_POST] Fatal error:", error);
+    console.error("[CHAT_POST] Fatal error occurred:", error);
     return new NextResponse("Internal Error", { status: 500 });
   }
 }

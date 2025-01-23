@@ -1,6 +1,5 @@
 "use client";
 
-import { Companion, Message } from "@prisma/client";
 import React from "react";
 import { Button } from "./ui/button";
 import {
@@ -21,6 +20,7 @@ import {
 } from "./ui/dropdown-menu";
 import { useToast } from "./ui/use-toast";
 import axios from "axios";
+import { Companion, Message } from "@prisma/client";
 
 interface ChatHeaderProps {
   companion: Companion & {
