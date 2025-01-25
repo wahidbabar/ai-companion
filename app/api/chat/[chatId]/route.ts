@@ -14,6 +14,7 @@ export async function POST(request: Request, { params }: { params: Params }) {
   try {
     const { prompt } = await request.json();
     const { chatId } = await params;
+    const memoryManager = await MemoryManager.getInstance();
 
     const user = await currentUser();
     if (!user || !user.id) {
@@ -42,13 +43,13 @@ export async function POST(request: Request, { params }: { params: Params }) {
       },
     });
 
+    await memoryManager.storeInPinecone(prompt, chatId);
+
     const companionKey = {
       companionName: companion.id,
       userId: user.id,
       modelName: "mistralai/Mixtral-8x7B-Instruct-v0.1",
     };
-
-    const memoryManager = await MemoryManager.getInstance();
 
     const records = await memoryManager.readLatestHistory(companionKey);
     if (records.length === 0) {
@@ -83,19 +84,23 @@ export async function POST(request: Request, { params }: { params: Params }) {
       .map((doc: Document) => doc.pageContent)
       .join("\n");
 
+    const latestHistory = await memoryManager.readLatestHistory(companionKey);
+
+    const fullHistory = `${latestHistory}\n${relevantHistory}`;
+
     const promptTemplate = `
-  You are ${companion.name}. Respond naturally as yourself.
-  Important: Do not use any prefixes or labels like "User Message:" or "Your Response:".
-  Do not include any metadata about the message structure.
-  Only answer to the point as much user has asked. Do not generate any thing from your own from the user.
-  Just respond directly as you would in a natural conversation.
-  
-  ${companion.instructions}
+You are ${companion.name}. Respond naturally as yourself.
+Important: Do not use any prefixes or labels like "User Message:" or "Your Response:".
+Do not include any metadata about the message structure.
+Only answer to the point as much user has asked. Do not generate any thing from your own from the user.
+Just respond directly as you would in a natural conversation.
 
-  Context from previous conversations:
-  ${relevantHistory}
+${companion.instructions}
 
-  Latest message: ${prompt}
+Context from previous conversations:
+${fullHistory}
+
+Latest message: ${prompt}
 `;
 
     const stream = new TransformStream();
@@ -134,6 +139,8 @@ export async function POST(request: Request, { params }: { params: Params }) {
               companionId: chatId,
             },
           });
+
+          await memoryManager.storeInPinecone(cleanedResponse, chatId);
 
           await memoryManager.writeToHistory(
             `${companion.name}: ${cleanedResponse}\n`,

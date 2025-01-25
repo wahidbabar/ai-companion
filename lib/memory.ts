@@ -118,6 +118,32 @@ export class MemoryManager {
     await pipeline.exec();
   }
 
+  public async storeInPinecone(
+    text: string,
+    companionId: string
+  ): Promise<void> {
+    try {
+      const index = this.vectorDBClient.index(process.env.PINECONE_INDEX!);
+
+      // Generate embeddings for the text
+      const embeddings = await this.embeddings.embedQuery(text);
+
+      // Store embeddings in Pinecone
+      await index.upsert([
+        {
+          id: `${companionId}-${Date.now()}`, // Unique ID for the embedding
+          values: embeddings,
+          metadata: {
+            text: text,
+            companionId: companionId,
+          },
+        },
+      ]);
+    } catch (error) {
+      console.error("Error storing embeddings in Pinecone:", error);
+    }
+  }
+
   private async trimHistory(key: string): Promise<void> {
     const count = await this.history.zcard(key);
     if (count > this.CHAT_HISTORY_LIMIT) {
