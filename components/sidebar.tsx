@@ -10,61 +10,47 @@ interface SidebarProps {
   isPro: boolean;
 }
 
+const routes = [
+  { icon: Home, href: "/", label: "Explore", pro: false },
+  { icon: Plus, href: "/companion/new", label: "Create", pro: false },
+  { icon: Settings, href: "/settings", label: "Settings", pro: false },
+];
+
 const Sidebar = ({ isPro }: SidebarProps) => {
   const pathname = usePathname();
   const router = useRouter();
   const proModal = useProModal();
-  const routes = [
-    {
-      icon: Home,
-      href: "/",
-      label: "home",
-      pro: false,
-    },
-    {
-      icon: Plus,
-      href: "/companion/new",
-      label: "Create",
-      pro: false,
-    },
-    {
-      icon: Settings,
-      href: "/settings",
-      label: "Settings",
-      pro: false,
-    },
-  ];
 
   const onNavigate = (url: string, pro: boolean) => {
-    if (pro && !isPro) {
-      return proModal.onOpen();
-    }
-
-    return router.push(url);
+    if (pro && !isPro) return proModal.onOpen();
+    router.push(url);
   };
 
   return (
-    <div className="space-y-4 flex flex-col h-full text-primary bg-secondary">
-      <div className="p-3 flex flex-1 justify-center">
-        <div className="space-y-2">
-          {routes.map((route) => (
-            <div
-              onClick={() => onNavigate(route.href, route.pro)}
+    <nav className="flex h-full flex-col border-r border-border/50 bg-background/95">
+      <div className="flex-1 space-y-0.5 p-3 pt-4">
+        {routes.map((route) => {
+          const isActive = pathname === route.href;
+          return (
+            <button
               key={route.href}
+              onClick={() => onNavigate(route.href, route.pro)}
               className={cn(
-                "text-muted-foreground text-xs group flex p-3 w-full justify-start font-medium cursor-pointer hover:text-primary hover:bg-primary/10 rounded-lg transition",
-                pathname === route.href && "bg-primary/10 text-primary"
+                "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-150",
+                isActive
+                  ? "bg-brand/10 text-brand"
+                  : "text-muted-foreground hover:bg-accent hover:text-foreground"
               )}
             >
-              <div className="flex flex-col gap-y-2 items-center flex-1">
-                <route.icon className="h-5 w-5" />
-                {route.label}
-              </div>
-            </div>
-          ))}
-        </div>
+              <route.icon
+                className={cn("h-4 w-4 shrink-0", isActive && "text-brand")}
+              />
+              {route.label}
+            </button>
+          );
+        })}
       </div>
-    </div>
+    </nav>
   );
 };
 

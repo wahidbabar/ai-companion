@@ -2,7 +2,7 @@ import { Redis } from "@upstash/redis";
 import { Document } from "@langchain/core/documents";
 import { PineconeStore } from "@langchain/pinecone";
 import { Pinecone } from "@pinecone-database/pinecone";
-import { HuggingFaceInferenceEmbeddings } from "@langchain/community/embeddings/hf";
+import { OpenAIEmbeddings } from "@langchain/openai";
 
 export type CompanionKey = {
   companionName: string;
@@ -14,7 +14,7 @@ export class MemoryManager {
   private static instance: MemoryManager;
   private history: Redis;
   private vectorDBClient: Pinecone;
-  private embeddings: HuggingFaceInferenceEmbeddings;
+  private embeddings: OpenAIEmbeddings;
   private readonly CHAT_HISTORY_LIMIT = 30;
 
   private constructor() {
@@ -24,8 +24,11 @@ export class MemoryManager {
       apiKey: process.env.PINECONE_API_KEY!,
     });
 
-    this.embeddings = new HuggingFaceInferenceEmbeddings({
-      apiKey: process.env.HUGGINGFACE_API_KEY,
+    // OpenAI's text-embedding-3-small produces 1536-dimensional vectors,
+    // which must match the dimension of the Pinecone index ("companion").
+    this.embeddings = new OpenAIEmbeddings({
+      apiKey: process.env.OPENAI_API_KEY,
+      model: "text-embedding-3-small",
     });
   }
 
@@ -42,7 +45,8 @@ export class MemoryManager {
 
   public async vectorSearch(
     query: string,
-    companionId: string
+    companionId: string,
+    userId: string
   ): Promise<Document[]> {
     try {
       const index = this.vectorDBClient.index(process.env.PINECONE_INDEX!);
@@ -54,9 +58,11 @@ export class MemoryManager {
         }
       );
 
-      // Perform similarity search with companion ID context
+      // Scope the search to this user's memories with this companion, so one
+      // user's private conversation can never surface in another user's chat.
       const results = await vectorStore.similaritySearch(query, 3, {
-        companionId: companionId,
+        companionId,
+        userId,
       });
 
       return results;
@@ -120,7 +126,8 @@ export class MemoryManager {
 
   public async storeInPinecone(
     text: string,
-    companionId: string
+    companionId: string,
+    userId: string
   ): Promise<void> {
     try {
       const index = this.vectorDBClient.index(process.env.PINECONE_INDEX!);
@@ -128,14 +135,16 @@ export class MemoryManager {
       // Generate embeddings for the text
       const embeddings = await this.embeddings.embedQuery(text);
 
-      // Store embeddings in Pinecone
+      // Store embeddings in Pinecone, tagged with both the companion and the
+      // user so retrieval can be scoped to the owner of the memory.
       await index.upsert([
         {
-          id: `${companionId}-${Date.now()}`, // Unique ID for the embedding
+          id: `${companionId}-${userId}-${Date.now()}`, // Unique ID for the embedding
           values: embeddings,
           metadata: {
             text: text,
             companionId: companionId,
+            userId: userId,
           },
         },
       ]);

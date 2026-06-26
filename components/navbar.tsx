@@ -1,19 +1,12 @@
 "use client";
 
 import { useProModal } from "@/hooks/use-pro-modal";
-import { cn } from "@/lib/utils";
 import { UserButton } from "@clerk/nextjs";
-import { Sparkles } from "lucide-react";
-import { Poppins } from "next/font/google";
+import { Sparkles, Zap } from "lucide-react";
 import Link from "next/link";
 import MobileSidebar from "./mobile-sidebar";
 import { ModeToggle } from "./mode-toggle";
 import { Button } from "./ui/button";
-
-const font = Poppins({
-  weight: "600",
-  subsets: ["latin"],
-});
 
 interface NavbarProps {
   isPro: boolean;
@@ -23,31 +16,37 @@ const Navbar = ({ isPro }: NavbarProps) => {
   const proModal = useProModal();
 
   return (
-    <div className="fixed w-full z-50 flex justify-between items-center py-2 px-4 border-b border-primary/10 bg-secondary h-16">
-      <div className="flex items-center">
-        <MobileSidebar isPro={isPro} />
-        <Link href="/">
-          <h1
-            className={cn(
-              "hidden md:block text-xl md:text-3xl font-bold text-primary",
-              font.className
-            )}
-          >
-            companion.ai
-          </h1>
-        </Link>
+    <header className="fixed inset-x-0 top-0 z-50 h-16 border-b border-border/60 bg-background/80 backdrop-blur-md">
+      <div className="flex h-full items-center justify-between px-4">
+        <div className="flex items-center gap-2">
+          <MobileSidebar isPro={isPro} />
+          <Link href="/" className="flex items-center gap-2.5">
+            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-brand shadow-sm shadow-brand/30">
+              <Zap className="h-[15px] w-[15px] fill-current text-white" />
+            </div>
+            <span className="hidden text-[17px] font-semibold tracking-tight sm:block">
+              companion<span className="text-brand">.ai</span>
+            </span>
+          </Link>
+        </div>
+
+        <div className="flex items-center gap-2">
+          {!isPro && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={proModal.onOpen}
+              className="hidden sm:flex h-8 gap-1.5 border-brand/30 text-brand hover:border-brand/50 hover:bg-brand/10 hover:text-brand"
+            >
+              <Sparkles className="h-3.5 w-3.5" />
+              Upgrade
+            </Button>
+          )}
+          <ModeToggle />
+          <UserButton afterSignOutUrl="/" />
+        </div>
       </div>
-      <div className="flex items-center gap-x-3">
-        {isPro || (
-          <Button variant="premium" size={"sm"} onClick={proModal.onOpen}>
-            Upgrade
-            <Sparkles className="h-4 w-4 fill-white text-white ml-2" />
-          </Button>
-        )}
-        <ModeToggle />
-        <UserButton afterSignOutUrl="/" />
-      </div>
-    </div>
+    </header>
   );
 };
 

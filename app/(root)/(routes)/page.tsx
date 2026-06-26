@@ -37,7 +37,15 @@ const RootPage = async ({ searchParams }: RootPageProps) => {
   const categories = await prismadb.category.findMany();
 
   return (
-    <div className="h-full p-4 space-y-2">
+    <div className="min-h-full space-y-6 p-4 sm:p-6 md:px-8 md:py-6">
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
+          Explore companions
+        </h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Chat with AI characters that remember your conversations.
+        </p>
+      </div>
       <SearchInput />
       <Categories data={categories} />
       <Companions companions={companions} />

@@ -40,10 +40,10 @@ const SearchInput = () => {
 
   return (
     <div className="relative">
-      <Search className="absolute h-4 2-4 top-3 left-4 text-muted-foreground " />
+      <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
       <Input
-        placeholder="Search..."
-        className="pl-20 bg-primary/20"
+        placeholder="Search companions…"
+        className="h-11 rounded-xl border-border bg-card/60 pl-10"
         onChange={onChange}
         value={value}
       />

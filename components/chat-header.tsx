@@ -2,13 +2,7 @@
 
 import React from "react";
 import { Button } from "./ui/button";
-import {
-  ChevronLeft,
-  Edit,
-  MessagesSquare,
-  MoreVertical,
-  Trash,
-} from "lucide-react";
+import { ChevronLeft, Edit, MessagesSquare, MoreVertical, Trash } from "lucide-react";
 import { useRouter } from "next/navigation";
 import BotAvatar from "./bot-avatar";
 import { useUser } from "@clerk/nextjs";
@@ -25,9 +19,7 @@ import { Companion, Message } from "@prisma/client";
 interface ChatHeaderProps {
   companion: Companion & {
     messages: Message[];
-    _count: {
-      messages: number;
-    };
+    _count: { messages: number };
   };
 }
 
@@ -39,56 +31,54 @@ const ChatHeader = ({ companion }: ChatHeaderProps) => {
   const onDelete = async () => {
     try {
       await axios.delete(`/api/companion/${companion.id}`);
-      toast({
-        description: "Success",
-      });
-
+      toast({ description: "Companion deleted." });
       router.refresh();
       router.push("/");
-    } catch (error) {
-      toast({
-        variant: "destructive",
-        description: "Something went wrong.",
-      });
+    } catch {
+      toast({ variant: "destructive", description: "Something went wrong." });
     }
   };
 
   return (
-    <div className="flex w-full justify-between items-center border-b border-primary/10 pb-4">
-      <div className="flex gap-x-2 items-center">
-        <Button onClick={() => router.push("/")} size="icon" variant="ghost">
-          <ChevronLeft className="h-8 nnw-8" />
+    <div className="flex w-full items-center justify-between gap-2">
+      <div className="flex min-w-0 items-center gap-2">
+        <Button
+          onClick={() => router.push("/")}
+          size="icon"
+          variant="ghost"
+          className="h-8 w-8 shrink-0"
+        >
+          <ChevronLeft className="h-5 w-5" />
         </Button>
-        <BotAvatar src={companion.src} />
-        <div className="flex flex-col gap-y-1">
-          <div className="flex items-center gap-x-2">
-            <p className="font-bold">{companion.name}</p>
-            <div className="flex items-center text-xs text-muted-foreground">
-              <MessagesSquare className="h-3 w-3 mr-1" />
+        <BotAvatar src={companion.src} className="h-9 w-9 shrink-0" />
+        <div className="min-w-0 flex flex-col">
+          <div className="flex items-center gap-2">
+            <p className="truncate font-semibold tracking-tight">{companion.name}</p>
+            <span className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
+              <MessagesSquare className="h-3 w-3" />
               {companion._count.messages}
-            </div>
+            </span>
           </div>
-          <p className="text-xs text-muted-foreground">
-            Created by {companion.userName}
+          <p className="truncate text-xs text-muted-foreground">
+            @{companion.userName}
           </p>
         </div>
       </div>
+
       {user?.id === companion.userId && (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="secondary" size="icon">
-              <MoreVertical className="" />
+            <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0">
+              <MoreVertical className="h-4 w-4" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem
-              onClick={() => router.push(`/companion/${companion.id}`)}
-            >
-              <Edit className="w-4 h-4 mr-2" />
+            <DropdownMenuItem onClick={() => router.push(`/companion/${companion.id}`)}>
+              <Edit className="mr-2 h-4 w-4" />
               Edit
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={onDelete}>
-              <Trash className="w-4 h-4 mr-2" />
+            <DropdownMenuItem onClick={onDelete} className="text-destructive focus:text-destructive">
+              <Trash className="mr-2 h-4 w-4" />
               Delete
             </DropdownMenuItem>
           </DropdownMenuContent>

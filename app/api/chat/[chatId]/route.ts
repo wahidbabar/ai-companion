@@ -3,16 +3,18 @@ import prismadb from "@/lib/prismadb";
 import { MemoryManager } from "@/lib/memory";
 import { rateLimit } from "@/lib/rate-limit";
 import { NextResponse } from "next/server";
-import { HfInference } from "@huggingface/inference";
+import OpenAI from "openai";
 import { Document } from "@langchain/core/documents";
 
 type Params = Promise<{ chatId: string }>;
 
-const hf = new HfInference(process.env.HUGGINGFACE_API_KEY);
+const CHAT_MODEL = "gpt-4o-mini";
+
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 export async function POST(request: Request, { params }: { params: Params }) {
   try {
-    const { prompt } = await request.json();
+    const { prompt, regenerate = false } = await request.json();
     const { chatId } = await params;
     const memoryManager = await MemoryManager.getInstance();
 
@@ -22,9 +24,14 @@ export async function POST(request: Request, { params }: { params: Params }) {
     }
 
     const identifier = request.url + "-" + user.id;
-    const { success } = await rateLimit(identifier);
-    if (!success) {
-      return new NextResponse("Rate limit exceeded", { status: 429 });
+    try {
+      const { success } = await rateLimit(identifier);
+      if (!success) {
+        return new NextResponse("Rate limit exceeded", { status: 429 });
+      }
+    } catch (error) {
+      console.error("[CHAT_POST] Rate limit check failed (Redis down?):", error);
+      // Don't hard-fail on rate-limit errors — proceed without limiting.
     }
 
     const companion = await prismadb.companion.findUnique({
@@ -34,24 +41,33 @@ export async function POST(request: Request, { params }: { params: Params }) {
       return new NextResponse("Companion not found", { status: 404 });
     }
 
-    await prismadb.message.create({
-      data: {
-        content: prompt,
-        role: "user",
-        userId: user.id,
-        companionId: chatId,
-      },
-    });
+    // On regenerate we reuse the existing last user turn, so we don't record
+    // a new user message, embedding, or history entry for it.
+    if (!regenerate) {
+      await prismadb.message.create({
+        data: {
+          content: prompt,
+          role: "user",
+          userId: user.id,
+          companionId: chatId,
+        },
+      });
 
-    await memoryManager.storeInPinecone(prompt, chatId);
+      await memoryManager.storeInPinecone(prompt, chatId, user.id);
+    }
 
     const companionKey = {
       companionName: companion.id,
       userId: user.id,
-      modelName: "mistralai/Mixtral-8x7B-Instruct-v0.1",
+      modelName: CHAT_MODEL,
     };
 
-    const records = await memoryManager.readLatestHistory(companionKey);
+    let records = "";
+    try {
+      records = await memoryManager.readLatestHistory(companionKey);
+    } catch (error) {
+      console.error("[CHAT_POST] readLatestHistory failed:", error);
+    }
     if (records.length === 0) {
       try {
         await memoryManager.seedChatHistory(
@@ -64,18 +80,23 @@ export async function POST(request: Request, { params }: { params: Params }) {
       }
     }
 
-    try {
-      await memoryManager.writeToHistory(
-        "User: " + prompt + "\n",
-        companionKey
-      );
-    } catch (error) {
-      console.error("[CHAT_POST] Error writing user prompt to history:", error);
+    if (!regenerate) {
+      try {
+        await memoryManager.writeToHistory(
+          "User: " + prompt + "\n",
+          companionKey
+        );
+      } catch (error) {
+        console.error(
+          "[CHAT_POST] Error writing user prompt to history:",
+          error
+        );
+      }
     }
 
     let similarDocs: Document[] = [];
     try {
-      similarDocs = await memoryManager.vectorSearch(prompt, companion.id);
+      similarDocs = await memoryManager.vectorSearch(prompt, companion.id, user.id);
     } catch (error) {
       console.error("[CHAT_POST] Vector search failed:", error);
     }
@@ -84,52 +105,91 @@ export async function POST(request: Request, { params }: { params: Params }) {
       .map((doc: Document) => doc.pageContent)
       .join("\n");
 
-    const latestHistory = await memoryManager.readLatestHistory(companionKey);
+    // Snippets of the long-term memories retrieved for this reply, sent to the
+    // client (via a header) so the UI can surface what the RAG layer recalled.
+    const retrievedMemories = similarDocs.map((doc: Document) => ({
+      text: doc.pageContent.slice(0, 300),
+    }));
+    const memoriesHeader = Buffer.from(
+      JSON.stringify(retrievedMemories)
+    ).toString("base64");
+
+    let latestHistory = "";
+    try {
+      latestHistory = await memoryManager.readLatestHistory(companionKey);
+    } catch (error) {
+      console.error("[CHAT_POST] readLatestHistory (2) failed:", error);
+    }
 
     const fullHistory = `${latestHistory}\n${relevantHistory}`;
 
-    const promptTemplate = `
-You are ${companion.name}. Respond naturally as yourself.
-Important: Do not use any prefixes or labels like "User Message:" or "Your Response:".
-Do not include any metadata about the message structure.
-Only answer to the point as much user has asked. Do not generate any thing from your own from the user.
-Just respond directly as you would in a natural conversation.
+    // The system message defines who the companion is and gives it the
+    // retrieved context (recent Redis history + relevant Pinecone memories).
+    // The user message is the latest thing the user actually typed.
+    const systemPrompt = `You are ${companion.name}. Respond naturally as yourself, in the first person.
+Do not use any prefixes or labels like "User:" or "${companion.name}:".
+Stay in character and answer only what the user asks — do not invent extra dialogue or speak on the user's behalf.
 
 ${companion.instructions}
 
-Context from previous conversations:
-${fullHistory}
+Context from previous conversations (use it to stay consistent; do not repeat it verbatim):
+${fullHistory}`;
 
-Latest message: ${prompt}
-`;
+    // Ask OpenAI for a streamed completion. If the account is out of credits,
+    // OpenAI rejects this request up front with an "insufficient_quota" error,
+    // which we catch here and surface to the user as HTTP 402 (Payment Required).
+    let openaiStream;
+    try {
+      openaiStream = await openai.chat.completions.create({
+        model: CHAT_MODEL,
+        stream: true,
+        temperature: 0.7,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: prompt },
+        ],
+      });
+    } catch (error) {
+      if (
+        error instanceof OpenAI.APIError &&
+        error.code === "insufficient_quota"
+      ) {
+        return NextResponse.json(
+          {
+            error:
+              "The AI is temporarily unavailable because the OpenAI account is out of credits. Please add credits and try again.",
+          },
+          { status: 402 }
+        );
+      }
+
+      console.error("[CHAT_POST] OpenAI request failed:", error);
+      return NextResponse.json(
+        { error: "The AI service failed to respond. Please try again." },
+        { status: 500 }
+      );
+    }
 
     const stream = new TransformStream();
     const writer = stream.writable.getWriter();
     const encoder = new TextEncoder();
 
-    const textStream = hf.textGenerationStream({
-      model: "mistralai/Mixtral-8x7B-Instruct-v0.1",
-      inputs: promptTemplate,
-      parameters: {
-        max_new_tokens: 2048,
-        temperature: 0.5,
-        repetition_penalty: 1.1,
-      },
-    });
-
     let responseText = "";
 
     (async () => {
       try {
-        for await (const chunk of textStream) {
-          responseText += chunk.token.text;
-          await writer.write(encoder.encode(chunk.token.text));
+        for await (const chunk of openaiStream) {
+          const token = chunk.choices[0]?.delta?.content ?? "";
+          if (token) {
+            responseText += token;
+            await writer.write(encoder.encode(token));
+          }
         }
       } catch (error) {
         console.error("[CHAT_POST] Streaming error:", error);
       } finally {
         try {
-          const cleanedResponse = responseText.replace(/\s*<\/s>\s*$/, "");
+          const cleanedResponse = responseText.trim();
 
           await prismadb.message.create({
             data: {
@@ -140,7 +200,7 @@ Latest message: ${prompt}
             },
           });
 
-          await memoryManager.storeInPinecone(cleanedResponse, chatId);
+          await memoryManager.storeInPinecone(cleanedResponse, chatId, user.id);
 
           await memoryManager.writeToHistory(
             `${companion.name}: ${cleanedResponse}\n`,
@@ -160,10 +220,14 @@ Latest message: ${prompt}
     return new Response(stream.readable, {
       headers: {
         "Content-Type": "text/plain; charset=utf-8",
+        "X-Memories": memoriesHeader,
       },
     });
   } catch (error) {
     console.error("[CHAT_POST] Fatal error occurred:", error);
-    return new NextResponse("Internal Error", { status: 500 });
+    return NextResponse.json(
+      { error: "Something went wrong. Please try again." },
+      { status: 500 }
+    );
   }
 }

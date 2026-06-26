@@ -1,6 +1,8 @@
 import "./globals.css";
+import "highlight.js/styles/github-dark.css";
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import { GeistSans } from "geist/font/sans";
+import { GeistMono } from "geist/font/mono";
 import { ClerkProvider } from "@clerk/nextjs";
 import { ThemeProvider } from "@/components/theme-provider";
 import { cn } from "@/lib/utils";
@@ -8,11 +10,10 @@ import { Toaster } from "@/components/ui/toaster";
 import { ProModal } from "@/components/pro-modal";
 import LoadingIndicator from "@/components/loading-indicator";
 
-const inter = Inter({ subsets: ["latin"] });
-
 export const metadata: Metadata = {
-  title: "AI Companion app",
-  description: "Made by Abdul Wahid",
+  title: "Companion — AI characters that remember you",
+  description:
+    "Create and chat with AI companions backed by a hybrid memory system: short-term context in Redis and long-term semantic recall in a vector database.",
 };
 
 export default function RootLayout({
@@ -22,9 +23,13 @@ export default function RootLayout({
 }) {
   return (
     <ClerkProvider>
-      <html lang="en" suppressHydrationWarning>
-        <body className={cn("bg-secondary", inter.className)}>
-          <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
+      <html
+        lang="en"
+        suppressHydrationWarning
+        className={cn(GeistSans.variable, GeistMono.variable)}
+      >
+        <body className="min-h-full bg-background font-sans text-foreground">
+          <ThemeProvider attribute="class" defaultTheme="dark" enableSystem>
             <LoadingIndicator />
             <ProModal />
             {children}

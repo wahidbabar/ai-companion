@@ -9,10 +9,10 @@ const RootLayout = async ({ children }: { children: React.ReactNode }) => {
   return (
     <div className="h-full">
       <Navbar isPro={isPro} />
-      <div className="hidden md:flex mt-16 w-20 flex-col fixed inset-y-0">
+      <div className="fixed bottom-0 left-0 top-16 hidden w-64 flex-col md:flex">
         <Sidebar isPro={isPro} />
       </div>
-      <main className="md:pl-20 pt-16 h-full">{children}</main>
+      <main className="h-full pt-16 md:pl-64">{children}</main>
     </div>
   );
 };
