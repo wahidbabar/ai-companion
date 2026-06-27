@@ -43,7 +43,7 @@ const Navbar = ({ isPro }: NavbarProps) => {
             </Button>
           )}
           <ModeToggle />
-          <UserButton afterSignOutUrl="/" />
+          <UserButton />
         </div>
       </div>
     </header>
