@@ -141,15 +141,18 @@ const ChatClient = ({ companion }: ChatClientProps) => {
   const onStop = () => abortRef.current?.abort();
 
   return (
-    <div className="flex h-full flex-col">
-      {/* Fixed header — full width with inner max-width constraint */}
-      <div className="shrink-0 border-b border-border/60 bg-background/80 px-4 py-3 backdrop-blur-sm">
+    <div className="relative flex h-full flex-col">
+      {/* Ambient page glow — radiates from top center */}
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-[480px] bg-[radial-gradient(ellipse_80%_60%_at_50%_0%,hsl(var(--brand)/0.07),transparent)]" />
+
+      {/* Header */}
+      <div className="relative shrink-0 border-b border-border/60 bg-background/80 px-4 py-3 backdrop-blur-md">
         <div className="mx-auto w-full max-w-3xl">
-          <ChatHeader companion={companion} />
+          <ChatHeader companion={companion} status={status} />
         </div>
       </div>
 
-      {/* Scrollable messages — takes remaining height */}
+      {/* Scrollable messages */}
       <ChatMessages
         companion={companion}
         messages={messages}
@@ -158,8 +161,8 @@ const ChatClient = ({ companion }: ChatClientProps) => {
         onRegenerate={onRegenerate}
       />
 
-      {/* Input bar — anchored to bottom */}
-      <div className="shrink-0 border-t border-border/60 bg-background/80 px-4 pb-4 pt-3 backdrop-blur-sm">
+      {/* Input bar */}
+      <div className="relative shrink-0 border-t border-border/60 bg-background/80 px-4 pb-4 pt-3 backdrop-blur-md">
         <div className="mx-auto w-full max-w-3xl">
           <ChatForm
             input={input}

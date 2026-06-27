@@ -15,15 +15,18 @@ import {
 import { useToast } from "./ui/use-toast";
 import axios from "axios";
 import { Companion, Message } from "@prisma/client";
+import { cn } from "@/lib/utils";
+import { type ChatStatus } from "./chat-messages";
 
 interface ChatHeaderProps {
   companion: Companion & {
     messages: Message[];
     _count: { messages: number };
   };
+  status?: ChatStatus;
 }
 
-const ChatHeader = ({ companion }: ChatHeaderProps) => {
+const ChatHeader = ({ companion, status = "idle" }: ChatHeaderProps) => {
   const router = useRouter();
   const { user } = useUser();
   const { toast } = useToast();
@@ -39,9 +42,14 @@ const ChatHeader = ({ companion }: ChatHeaderProps) => {
     }
   };
 
+  const statusLabel =
+    status === "thinking" ? "Thinking…"
+    : status === "streaming" ? "Responding…"
+    : "Ready to chat";
+
   return (
     <div className="flex w-full items-center justify-between gap-2">
-      <div className="flex min-w-0 items-center gap-2">
+      <div className="flex min-w-0 items-center gap-3">
         <Button
           onClick={() => router.push("/")}
           size="icon"
@@ -50,7 +58,18 @@ const ChatHeader = ({ companion }: ChatHeaderProps) => {
         >
           <ChevronLeft className="h-5 w-5" />
         </Button>
-        <BotAvatar src={companion.src} className="h-9 w-9 shrink-0" />
+
+        {/* Avatar with online ring */}
+        <div className="relative shrink-0">
+          <BotAvatar src={companion.src} className="h-10 w-10 ring-2 ring-border/80 shadow-sm" />
+          <span
+            className={cn(
+              "absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-background shadow-sm transition-colors duration-500",
+              status !== "idle" ? "bg-amber-400" : "bg-emerald-500"
+            )}
+          />
+        </div>
+
         <div className="min-w-0 flex flex-col">
           <div className="flex items-center gap-2">
             <p className="truncate font-semibold tracking-tight">{companion.name}</p>
@@ -59,9 +78,7 @@ const ChatHeader = ({ companion }: ChatHeaderProps) => {
               {companion._count.messages}
             </span>
           </div>
-          <p className="truncate text-xs text-muted-foreground">
-            @{companion.userName}
-          </p>
+          <p className="truncate text-xs text-muted-foreground">{statusLabel}</p>
         </div>
       </div>
 
